@@ -1,0 +1,28 @@
+application:
+  telegramBot:
+    token: "6698869797:AAFzmzhLwmMNX6p6ZkK4cBkh2I4u_T__w7c"
+    chatId: "-4091648098"
+  port: ":9999"
+  service:
+    routerPath:
+      setData: "./setData"
+      getData: "./getData"
+      console: "./console"
+      console_dir: "html/*"
+      console_assets: "./assets"
+      login: "./login"
+      logout: "./logout"
+      getRoomSetting: "./getRoomSetting"
+
+  sqlService:
+    user: "sqlMod"
+    pwd: "sqlMod#123"
+    network: "tcp"
+    host: "0.0.0.0"
+    port: 3306
+    database: "housekeeper"
+    order_tab: "data_room_order"
+    user_tab: "data_stuff"
+    room_type_tab: "code_room_type"
+    user_event_tab: "data_order_with_account"
+    telegram_contact_tab: "data_stuff_telegram"

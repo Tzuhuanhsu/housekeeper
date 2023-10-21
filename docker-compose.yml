@@ -1,0 +1,31 @@
+version: '3'
+services:
+  golang:
+    image: golang
+    ports:
+      - "3000:3000"
+    working_dir: /APP
+    volumes:
+      - .:/APP
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: sqlMod
+      MYSQL_PASSWORD: sqlMod#123
+      MYSQL_DB: housekeeper
+    depends_on:
+      - mysql
+    command: >
+      bash -c "echo 'Hello'
+      && ls
+      && go run main.go"
+  mysql:
+    image: mysql
+    ports:
+      - 3306:3306
+    volumes:
+      - todo-mysql-data:/var/lib/mysql
+    environment: 
+      MYSQL_ROOT_PASSWORD: sqlMod#123
+      MYSQL_DATABASE: housekeeper
+volumes:
+  todo-mysql-data:
