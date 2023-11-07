@@ -83,6 +83,7 @@ type RoomOrder struct {
 	Paid           bool   `json:"Paid"`
 }
 
+//查詢 sql 語法
 func (s *SqlMod) Query(querySql string) *sql.Rows {
 
 	if success, db := GetInstance().connectDB(); success {
@@ -97,6 +98,7 @@ func (s *SqlMod) Query(querySql string) *sql.Rows {
 	return nil
 }
 
+//執行 sql 語法
 func (s *SqlMod) Exec(exec string) {
 	if success, db := GetInstance().connectDB(); success {
 		defer db.Close()

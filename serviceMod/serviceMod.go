@@ -37,27 +37,28 @@ var (
 )
 
 const (
-	WEBSOCKET_EVENT_ORDER_INFO         websocketSubEvent = "OrderInfo"
-	WEBSOCKET_EVENT_CHECK_IN           websocketSubEvent = "CheckIn"
-	WEBSOCKET_EVENT_CHECK_OUT          websocketSubEvent = "CheckOut"
-	WEBSOCKET_EVENT_CHECK_CLEAR        websocketSubEvent = "CheckClear"
-	WEBSOCKET_EVENT_CHECK_PAY          websocketSubEvent = "CheckPay"
-	WEBSOCKET_EVENT_DEL_ORDER          websocketSubEvent = "DelOrder"
-	WEBSOCKET_EVENT_ON_SUCCESS         websocketSubEvent = "OnSuccess"
-	WEBSOCKET_EVENT_ON_FAIL            websocketSubEvent = "OnFail"
-	WEBSOCKET_EVENT_UPDATE             websocketSubEvent = "OrderInfoUpdate"
-	WEBSOCKET_EVENT_ERROR              websocketSubEvent = "Error"
-	POST_KEY_CHECK_IN_TIME                               = "checkInDate"
-	POST_KEY_CHECK_OUT_TIME                              = "checkOutData"
-	POST_KEY_NUMBER_OF_PEOPLE                            = "numberOfPeople"
-	RESPONSE_SUCCESS                   ServiceCode       = 200
-	RESPONSE_POST_DATA_FORM_ERR        ServiceCode       = 401
-	RESPONSE_POST_ORDER_NOT_EXIST      ServiceCode       = 402
-	RESPONSE_POST_GET_USER_TOKEN_FAIL  ServiceCode       = 403
-	RESPONSE_POST_GET_USER_Login_FAIL  ServiceCode       = 405
-	RESPONSE_WEBSOCKET_VERY_TOKEN_FAIL ServiceCode       = 406
-	RESPONSE_GET_TOKEN_FAIL            ServiceCode       = 407
-	RESPONSE_POST_PERMISSION_FAIL      ServiceCode       = 408
+	WEBSOCKET_EVENT_ORDER_INFO  websocketSubEvent = "OrderInfo"
+	WEBSOCKET_EVENT_CHECK_IN    websocketSubEvent = "CheckIn"
+	WEBSOCKET_EVENT_CHECK_OUT   websocketSubEvent = "CheckOut"
+	WEBSOCKET_EVENT_CHECK_CLEAR websocketSubEvent = "CheckClear"
+	WEBSOCKET_EVENT_CHECK_PAY   websocketSubEvent = "CheckPay"
+	WEBSOCKET_EVENT_DEL_ORDER   websocketSubEvent = "DelOrder"
+	WEBSOCKET_EVENT_ON_SUCCESS  websocketSubEvent = "OnSuccess"
+	WEBSOCKET_EVENT_ON_FAIL     websocketSubEvent = "OnFail"
+	WEBSOCKET_EVENT_UPDATE      websocketSubEvent = "OrderInfoUpdate"
+	WEBSOCKET_EVENT_ERROR       websocketSubEvent = "Error"
+	POST_KEY_CHECK_IN_TIME                        = "checkInDate"
+	POST_KEY_CHECK_OUT_TIME                       = "checkOutData"
+	POST_KEY_NUMBER_OF_PEOPLE                     = "numberOfPeople"
+	// Error Code
+	RESPONSE_SUCCESS                   ServiceCode = 200
+	RESPONSE_POST_DATA_FORM_ERR        ServiceCode = 401
+	RESPONSE_POST_ORDER_NOT_EXIST      ServiceCode = 402
+	RESPONSE_POST_GET_USER_TOKEN_FAIL  ServiceCode = 403
+	RESPONSE_POST_GET_USER_Login_FAIL  ServiceCode = 405
+	RESPONSE_WEBSOCKET_VERY_TOKEN_FAIL ServiceCode = 406
+	RESPONSE_GET_TOKEN_FAIL            ServiceCode = 407
+	RESPONSE_POST_PERMISSION_FAIL      ServiceCode = 408
 )
 
 //get setting instance
@@ -102,10 +103,12 @@ func (s *Service) CreateWebSocketMsg(event websocketSubEvent, content interface{
 	}
 }
 
+//register websocket connect handle
 func (s *Service) RegisterWebsocketConnect(callback func(*melody.Session)) {
 	s.melodyWebsocket.HandleConnect(callback)
 }
 
+//register websocket message handle
 func (s *Service) RegisterWebsocketMessage(callback func(*melody.Session, []byte)) {
 	s.melodyWebsocket.HandleMessage(callback)
 }
