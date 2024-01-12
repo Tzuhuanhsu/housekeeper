@@ -15,6 +15,7 @@ import (
 
 type LoginMod struct {
 	accountWithData accountWithInfoMap
+	accountLck      sync.Mutex
 }
 
 type accountWithInfoMap map[string]userStruct
@@ -81,6 +82,9 @@ func (loginMod *LoginMod) DoLogin(account, password string) bool {
 		password: password}
 	isSuccess := loginMod.queryUser(account, password, user)
 	if isSuccess {
+		//lock
+		loginMod.accountLck.Lock()
+		defer loginMod.accountLck.Unlock()
 		if existUser, exist := loginMod.accountWithData[account]; exist {
 			//強制斷線已經存在的使用者
 			fmt.Println("重複登入，剔除前一位使用者", existUser.session)
@@ -100,6 +104,8 @@ func (loginMod *LoginMod) DoLogin(account, password string) bool {
 //登出
 func (loginMod *LoginMod) DoLogout(account string) {
 	if existUser, exist := loginMod.accountWithData[account]; exist {
+		loginMod.accountLck.Lock()
+		defer loginMod.accountLck.Unlock()
 		if !existUser.session.IsClosed() {
 			existUser.session.Close()
 		}

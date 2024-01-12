@@ -26,6 +26,16 @@ const (
 	SERVICE_GET_GET_DATA = "application.service.routerPath.getData"
 	//GET Services
 	SERVICE_GET_GET_ROOM_SETTING = "application.service.routerPath.getRoomSetting"
+	//Get User Type
+	SERVICE_GET_GET_USER_TYPE = "application.service.routerPath.getUserType"
+	//Get Door Key Data
+	SERVICE_GET_GET_DOOR_KEY_DATA = "application.service.routerPath.getDoorKeyData"
+	//Get Room key data
+	SERVICE_GET_GET_ROOM_KEY_DATA = "application.service.routerPath.getRoomKeyData"
+	SERVICE_POST_ADD_ROOM_KEY     = "application.service.routerPath.addRoomKey"
+	SERVICE_POST_ADD_DOOR_KEY     = "application.service.routerPath.addDoorKey"
+	SERVICE_POST_DELETE_ROOM_KEY  = "application.service.routerPath.deleteRoomKey"
+	SERVICE_POST_DELETE_DOOR_KEY  = "application.service.routerPath.deleteDoorKey"
 
 	SERVICE_CONSOL_WEB_PAGE        = "application.service.routerPath.console"
 	SERVICE_CONSOL_WEB_PAGE_DIR    = "application.service.routerPath.console_dir"
@@ -36,6 +46,8 @@ const (
 	DB_USER_TAB                    = "application.sqlService.user_tab"
 	DB_USER_EVENT_TAB              = "application.sqlService.user_event_tab"
 	DB_TELEGRAM_CONTACT_TAB        = "application.sqlService.telegram_contact_tab"
+	DB_DOOR_KEY_INFO_TAB           = "application.sqlService.door_key_info_tab"
+	DB_ROOM_KEY_INFO_TAB           = "application.sqlService.data_room_key_info"
 
 	TELEGRAM_BOT_TOKEN   = "application.telegramBot.token"
 	TELEGRAM_BOT_CHAT_ID = "application.telegramBot.chatId"

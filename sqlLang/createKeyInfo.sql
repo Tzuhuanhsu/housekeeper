@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS data_door_key_info (
+    C_Id VARCHAR(20) NOT NULL PRIMARY KEY,
+    DoorKey VARCHAR(10) NOT NULL,
+    BeginTime DATE NOT NULL,
+    EndTime DATE NOT NULL
+);
+CREATE TABLE IF NOT EXISTS data_room_key_info(
+    C_Id VARCHAR(20) NOT NULL PRIMARY KEY,
+    RoomKey VARCHAR(10) NOT NULL,
+    BeginTime DATE NOT NULL,
+    EndTime DATE NOT NULL,
+    RoomType INT NOT NULL
+)

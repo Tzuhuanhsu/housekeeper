@@ -3,6 +3,7 @@ package orderSys
 import (
 	"encoding/json"
 	"fmt"
+	keymgrmod "housekeepr/keyMgrMod"
 	"housekeepr/loginMod"
 	"housekeepr/serviceMod"
 	"housekeepr/settingMod"
@@ -17,8 +18,7 @@ import (
 )
 
 type OrderSys struct {
-	orderInfo   OrderInfo
-	roomSetting map[int]string
+	orderInfo OrderInfo
 }
 
 //訂單資訊
@@ -26,48 +26,32 @@ type OrderSys struct {
 type OrderInfo map[string]*RoomOrder
 
 type RoomOrder struct {
-	OrderId        string      `json:"OrderId"`
-	CheckInData    string      `json:"CheckInData"`
-	CheckOutData   string      `json:"CheckOutData"`
-	NumberOfPeople int         `json:"NumberOfPeople"`
-	Cost           int         `json:"Cost"`
-	RoomStatus     OrderStatus `json:"OrderStatus"`
-	RoomExplain    string      `json:"RoomExplain"`
-	RoomType       RoomType    `json:"RoomType"`
-	Paid           bool        `json:"Paid"`
+	OrderId        string             `json:"OrderId"`
+	CheckInData    string             `json:"CheckInData"`
+	CheckOutData   string             `json:"CheckOutData"`
+	NumberOfPeople int                `json:"NumberOfPeople"`
+	Cost           int                `json:"Cost"`
+	RoomStatus     OrderStatus        `json:"OrderStatus"`
+	RoomExplain    string             `json:"RoomExplain"`
+	RoomType       keymgrmod.RoomType `json:"RoomType"`
+	Paid           bool               `json:"Paid"`
 }
 
 type PostSetOrder struct {
-	CheckInData    string   `json:"CheckInData"`
-	CheckOutData   string   `json:"CheckOutData"`
-	NumberOfPeople int      `json:"NumberOfPeople"`
-	Cost           int      `json:"Cost"`
-	RoomExplain    string   `json:"RoomExplain"`
-	RoomType       RoomType `json:"RoomType"`
-	Paid           bool     `json:"Paid"`
-	Account        string   `json:"Account"`
-	Token          string   `json:"Token"`
-}
-type RoomTypeSetting struct {
-	RoomType int
-	RoomName string
+	CheckInData    string             `json:"CheckInData"`
+	CheckOutData   string             `json:"CheckOutData"`
+	NumberOfPeople int                `json:"NumberOfPeople"`
+	Cost           int                `json:"Cost"`
+	RoomExplain    string             `json:"RoomExplain"`
+	RoomType       keymgrmod.RoomType `json:"RoomType"`
+	Paid           bool               `json:"Paid"`
+	Account        string             `json:"Account"`
+	Token          string             `json:"Token"`
 }
 
 //訂單狀態
 type OrderStatus int
-type RoomType int
 
-const (
-	RoomUnknown RoomType = iota
-	//二樓兩人房
-	TwoTwo RoomType = 1
-	//二樓四人房
-	TwoFour RoomType = 2
-	//三樓兩人房(1)
-	ThreeTwoOne RoomType = 3
-	//三樓兩人房(2)
-	ThreeTwoTwo RoomType = 4
-)
 const (
 	Unknown OrderStatus = 0
 	//預定
@@ -91,6 +75,9 @@ const (
 	ORDER_ID_FORM = "{CheckInTime}-{RoomType}"
 )
 
+//指定房間金鑰有效日
+const SPECIFIC_KEY_VALIDITY_INTERVAL = 7
+
 //確認訂單內容
 func (sys *OrderSys) checkOrder(postOrder *PostSetOrder) (bool, string) {
 	baseDateString := "2006-01-02"
@@ -102,7 +89,7 @@ func (sys *OrderSys) checkOrder(postOrder *PostSetOrder) (bool, string) {
 		log.Printf("Order 輸入金額有誤")
 		return false, "Order 輸入金額有誤"
 	}
-	if postOrder.RoomType == RoomUnknown {
+	if postOrder.RoomType == keymgrmod.RoomUnknown {
 		log.Printf("訂單房間代號有誤 (%v)", postOrder.RoomType)
 		return false, fmt.Sprintf("訂單房間代號有誤 (%v)", postOrder.RoomType)
 	}
@@ -137,22 +124,23 @@ func (sys *OrderSys) checkOrder(postOrder *PostSetOrder) (bool, string) {
 	}
 	return true, ""
 }
+
+// 初始化
 func (sys *OrderSys) init() {
+	TimeFormatForm := "2006-01-02 15:04:05"
 	sys.orderInfo = make(OrderInfo)
-	sys.roomSetting = make(map[int]string)
 	now := time.Now()
 	firstDateTime := now.AddDate(0, 0, -now.Day()+1)
 	firstDateZeroTime := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, firstDateTime.Location())
 	lastDateZeroTime := time.Date(now.Year(), 12, 31, 0, 0, 0, 0, firstDateTime.Location())
-	sys.queryOrder(firstDateZeroTime.Local().Format("2006-01-02 15:04:05"), lastDateZeroTime.Local().Format("2006-01-02 15:04:05"))
-	sys.queryRoomType()
+	sys.queryOrder(firstDateZeroTime.Local().Format(TimeFormatForm), lastDateZeroTime.Local().Format(TimeFormatForm))
 }
 
 func (sys *OrderSys) Run() {
 	log.Println("order sys running")
 	//系統初始化
 	sys.init()
-
+	keymgrmod.GetInstance().Init()
 	//檢查 token 有效
 	checkUserTokeTime := time.NewTicker(time.Minute * 30)
 	go sys.checkUserTokenLiveTime(checkUserTokeTime)
@@ -183,6 +171,35 @@ func (sys *OrderSys) Run() {
 	serviceMod.GetInstance().RegisterGet(
 		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_GET_GET_ROOM_SETTING)),
 		sys.handleGetRoomSetting)
+	//取得Uer Type
+	serviceMod.GetInstance().RegisterGet(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_GET_GET_USER_TYPE)),
+		sys.handleGetUserType)
+	//取得大門金鑰資料
+	serviceMod.GetInstance().RegisterGet(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_GET_GET_DOOR_KEY_DATA)),
+		sys.handleGetDoorKeyData)
+	//取得房間金鑰資料
+	serviceMod.GetInstance().RegisterGet(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_GET_GET_ROOM_KEY_DATA)),
+		sys.handleGetRoomKeyData)
+
+	//新增大門金鑰
+	serviceMod.GetInstance().RegisterPOST(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_POST_ADD_DOOR_KEY)),
+		sys.handleAddDoorKey)
+	//新增房間金鑰
+	serviceMod.GetInstance().RegisterPOST(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_POST_ADD_ROOM_KEY)),
+		sys.handleAddRoomKey)
+	//刪除大門金鑰
+	serviceMod.GetInstance().RegisterPOST(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_POST_DELETE_DOOR_KEY)),
+		sys.handleDeleteDoorKey)
+	// 刪除房間金鑰
+	serviceMod.GetInstance().RegisterPOST(
+		fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_POST_DELETE_ROOM_KEY)),
+		sys.handleDeleteRoomKey)
 
 	// serviceMod.GetInstance().RegisterWebPage(
 	// 	fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.SERVICE_CONSOL_WEB_PAGE)),
@@ -202,6 +219,7 @@ func (sys *OrderSys) checkUserTokenLiveTime(ticker interface{}) {
 
 //Handle websocket Meg(order process)
 func (sys *OrderSys) handleWebsocketMessage(s *melody.Session, message []byte) {
+	var orderData map[string]string
 	fmt.Println("handleWebsocketMessage", string(message))
 	websocketMsg := new(serviceMod.WebSocketMessage)
 	if err := json.Unmarshal(message, websocketMsg); err != nil {
@@ -216,165 +234,196 @@ func (sys *OrderSys) handleWebsocketMessage(s *melody.Session, message []byte) {
 			err).ToByte())
 		return
 	}
+	if err := json.Unmarshal(websocketContentByteData, &orderData); err != nil {
+		fmt.Println("handleWebsocketMessage error", err)
+		s.Write(serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_ON_FAIL,
+			err).ToByte())
+		return
+	}
+	orderId := orderData["orderId"]
+	account := orderData["account"]
 	switch websocketMsg.Event {
 	//pay
 	case serviceMod.WEBSOCKET_EVENT_CHECK_PAY:
-		var orderData map[string]string
-		if err := json.Unmarshal(websocketContentByteData, &orderData); err != nil {
-			fmt.Println("handleWebsocketMessage error", err)
-			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_ON_FAIL,
-				err).ToByte())
-		} else {
-			if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
-				return
-			}
-			if sys.orderInfo[orderData["orderId"]] != nil {
-				fmt.Println("handleWebsocketMessage check pay order id=", orderData["orderId"])
-				sys.orderInfo[orderData["orderId"]].Paid = true
-				sys.updateOrderToDB(sys.orderInfo[orderData["orderId"]])
-				sys.updateUserEditEvent(orderData["orderId"], orderData["account"], Paid)
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check pay success").ToByte())
-				//send Telegram Bot msg
-				telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n付款完成",
-					sys.orderInfo[orderData["orderId"]].OrderId, sys.roomSetting[int(sys.orderInfo[orderData["orderId"]].RoomType)]), loginMod.BOSS)
-				//broadcast all user refresh data
-				serviceMod.GetInstance().BroadcastWebsocketMsg(
-					serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
-			} else {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
-			}
+		if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
+			return
 		}
+		if sys.Pay(orderId, account) {
+			fmt.Println("handleWebsocketMessage check pay order id=", orderData["orderId"])
+
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check pay success").ToByte())
+
+		} else {
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
+		}
+
 	//check clear
 	case serviceMod.WEBSOCKET_EVENT_CHECK_CLEAR:
-		var orderData map[string]string
-		if err := json.Unmarshal(websocketContentByteData, &orderData); err != nil {
-			fmt.Println("handleWebsocketMessage error", err)
-			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_ON_FAIL,
-				err).ToByte())
+		if sys.checkClear(orderId, account) {
+			fmt.Println("handleWebsocketMessage check clear order id=", orderData["orderId"])
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check clear success").ToByte())
+
 		} else {
-			if sys.orderInfo[orderData["orderId"]] != nil {
-				fmt.Println("handleWebsocketMessage check clear order id=", orderData["orderId"])
-				sys.orderInfo[orderData["orderId"]].RoomStatus = ClearFinish
-				sys.updateUserEditEvent(orderData["orderId"], orderData["account"], ClearFinish)
-				sys.updateOrderToDB(sys.orderInfo[orderData["orderId"]])
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check clear success").ToByte())
-				//send Telegram Bot msg
-				telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n檢查清潔完成",
-					sys.orderInfo[orderData["orderId"]].OrderId, sys.roomSetting[int(sys.orderInfo[orderData["orderId"]].RoomType)]), loginMod.BOSS)
-				//broadcast all user refresh data
-				serviceMod.GetInstance().BroadcastWebsocketMsg(
-					serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
-			} else {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
-			}
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
 		}
+
 	//check out
 	case serviceMod.WEBSOCKET_EVENT_CHECK_OUT:
-		var orderData map[string]string
-		if err := json.Unmarshal(websocketContentByteData, &orderData); err != nil {
-			fmt.Println("handleWebsocketMessage error", err)
-			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_ON_FAIL,
-				err).ToByte())
+
+		if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
+			return
+		}
+		if sys.checkOut(orderId, account) {
+			fmt.Println("handleWebsocketMessage check out order id=", orderData["orderId"])
+
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check out success").ToByte())
+
 		} else {
-			if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
-				return
-			}
-			if sys.orderInfo[orderData["orderId"]] != nil {
-				fmt.Println("handleWebsocketMessage check out order id=", orderData["orderId"])
-				sys.orderInfo[orderData["orderId"]].RoomStatus = WaitClear
-				sys.updateUserEditEvent(orderData["orderId"], orderData["account"], WaitClear)
-				sys.updateOrderToDB(sys.orderInfo[orderData["orderId"]])
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check out success").ToByte())
-				//send Telegram Bot msg
-				telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n已經退房",
-					sys.orderInfo[orderData["orderId"]].OrderId, sys.roomSetting[int(sys.orderInfo[orderData["orderId"]].RoomType)]), loginMod.JANITOR)
-				//broadcast all user refresh data
-				serviceMod.GetInstance().BroadcastWebsocketMsg(
-					serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
-			} else {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
-			}
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
 		}
 
 	//check in
 	case serviceMod.WEBSOCKET_EVENT_CHECK_IN:
 
-		var orderData map[string]string
-		if err := json.Unmarshal(websocketContentByteData, &orderData); err != nil {
-			fmt.Println("handleWebsocketMessage error", err)
-			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_ON_FAIL,
-				err).ToByte())
-		} else {
-			fmt.Println("orderData", websocketContentByteData)
-			fmt.Println("orderData", orderData)
-			if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
-				return
-			}
-			if sys.orderInfo[orderData["orderId"]] != nil {
-				fmt.Println("handleWebsocketMessage check in order id=", orderData["orderId"])
-				sys.orderInfo[orderData["orderId"]].RoomStatus = CheckIn
-				sys.updateOrderToDB(sys.orderInfo[orderData["orderId"]])
-				sys.updateUserEditEvent(orderData["orderId"], orderData["account"], CheckIn)
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check in success").ToByte())
-				//send Telegram Bot msg
-				telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n已經入住",
-					sys.orderInfo[orderData["orderId"]].OrderId, sys.roomSetting[int(sys.orderInfo[orderData["orderId"]].RoomType)]),
-					loginMod.BOSS)
-				//broadcast all user refresh data
-				serviceMod.GetInstance().BroadcastWebsocketMsg(
-					serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
-			} else {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
-			}
-		}
-		//刪除訂單
-	case serviceMod.WEBSOCKET_EVENT_DEL_ORDER:
-		var orderData map[string]string
-		if err := json.Unmarshal(websocketContentByteData, &orderData); err != nil {
-			fmt.Println("handleWebsocketMessage error", err)
-			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_ON_FAIL,
-				err).ToByte())
-		} else {
-			if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
-				s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-					serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
-				return
-			}
-		}
-		if sys.orderInfo[orderData["orderId"]] != nil {
-			fmt.Println("handleWebsocketMessage check in order id=", orderData["orderId"])
-			delete(sys.orderInfo, orderData["orderId"])
-			sys.deleteOrderToDB(orderData["orderId"])
-			sys.updateUserEditEvent(orderData["orderId"], orderData["account"], Delete)
+		if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
 			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
-				serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" 刪除完成").ToByte())
-			//send Telegram Bot msg
-			telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nAccount:%v \n刪除完成",
-				orderData["orderId"], orderData["account"]), loginMod.BOSS)
-			//broadcast all user refresh data
-			serviceMod.GetInstance().BroadcastWebsocketMsg(
-				serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
+			return
+		}
+		if sys.checkIn(orderId, account) {
+			fmt.Println("handleWebsocketMessage check in order id=", orderData["orderId"])
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderData["orderId"]+" check in success").ToByte())
+
 		} else {
 			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
 				serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderData["orderId"]+" 不存在").ToByte())
 		}
+
+		//刪除訂單
+	case serviceMod.WEBSOCKET_EVENT_DEL_ORDER:
+		if loginMod.GetInstance().GetUserStaffType(orderData["account"]) != loginMod.BOSS {
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, "帳號沒有權限").ToByte())
+			return
+		}
+		if sys.delOrder(orderId, account) {
+			fmt.Println("handleWebsocketMessage check in order id=", orderId)
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_SUCCESS, orderId+" 刪除完成").ToByte())
+
+		} else {
+			s.Write(serviceMod.GetInstance().CreateWebSocketMsg(
+				serviceMod.WEBSOCKET_EVENT_ON_FAIL, orderId+" 不存在").ToByte())
+		}
 	}
 }
 
+//Check in
+func (sys *OrderSys) checkIn(orderId, account string) bool {
+	if sys.orderInfo[orderId] != nil {
+		roomSetting := keymgrmod.GetInstance().GetRoomSetting()
+		sys.orderInfo[orderId].RoomStatus = CheckIn
+		sys.updateOrderToDB(sys.orderInfo[orderId])
+		sys.updateUserEditEvent(orderId, account, CheckIn)
+		//send Telegram Bot msg
+		telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n已經入住",
+			orderId, roomSetting[int(sys.orderInfo[orderId].RoomType)]),
+			loginMod.BOSS)
+		//broadcast all user refresh data
+		serviceMod.GetInstance().BroadcastWebsocketMsg(
+			serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
+		return true
+	} else {
+		return false
+	}
+}
+
+//Check out
+func (sys *OrderSys) checkOut(orderId, account string) bool {
+	if sys.orderInfo[orderId] != nil {
+		roomSetting := keymgrmod.GetInstance().GetRoomSetting()
+		sys.orderInfo[orderId].RoomStatus = WaitClear
+		sys.updateUserEditEvent(orderId, account, WaitClear)
+		sys.updateOrderToDB(sys.orderInfo[orderId])
+		//send Telegram Bot msg
+		telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n已經退房",
+			orderId, roomSetting[int(sys.orderInfo[orderId].RoomType)]), loginMod.JANITOR)
+		//broadcast all user refresh data
+		serviceMod.GetInstance().BroadcastWebsocketMsg(
+			serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
+		return true
+	} else {
+		return false
+	}
+}
+
+//確認清潔
+func (sys *OrderSys) checkClear(orderId, account string) bool {
+	if sys.orderInfo[orderId] != nil {
+		roomSetting := keymgrmod.GetInstance().GetRoomSetting()
+		sys.orderInfo[orderId].RoomStatus = ClearFinish
+		sys.updateUserEditEvent(orderId, account, ClearFinish)
+		sys.updateOrderToDB(sys.orderInfo[orderId])
+		//send Telegram Bot msg
+		telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n檢查清潔完成",
+			orderId, roomSetting[int(sys.orderInfo[orderId].RoomType)]), loginMod.BOSS)
+		//broadcast all user refresh data
+		serviceMod.GetInstance().BroadcastWebsocketMsg(
+			serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
+		return true
+	} else {
+		return false
+	}
+}
+
+//付款
+func (sys *OrderSys) Pay(orderId, account string) bool {
+	if sys.orderInfo[orderId] != nil {
+		roomSetting := keymgrmod.GetInstance().GetRoomSetting()
+		sys.orderInfo[orderId].Paid = true
+		sys.updateOrderToDB(sys.orderInfo[orderId])
+		sys.updateUserEditEvent(orderId, account, Paid)
+		//send Telegram Bot msg
+		telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n付款完成",
+			orderId, roomSetting[int(sys.orderInfo[orderId].RoomType)]), loginMod.BOSS)
+		//broadcast all user refresh data
+		serviceMod.GetInstance().BroadcastWebsocketMsg(
+			serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
+		return true
+	} else {
+		return false
+	}
+}
+
+//刪除訂單
+func (sys *OrderSys) delOrder(orderId, account string) bool {
+	if sys.orderInfo[orderId] != nil {
+		delete(sys.orderInfo, orderId)
+		sys.deleteOrderToDB(orderId)
+		sys.updateUserEditEvent(orderId, account, Delete)
+		//send Telegram Bot msg
+		telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nAccount:%v \n刪除完成",
+			orderId, account), loginMod.BOSS)
+		//broadcast all user refresh data
+		serviceMod.GetInstance().BroadcastWebsocketMsg(
+			serviceMod.GetInstance().CreateWebSocketMsg(serviceMod.WEBSOCKET_EVENT_UPDATE, sys.orderInfo))
+		return true
+	} else {
+		return false
+	}
+
+}
 func (sys *OrderSys) handleWebsocketConnect(s *melody.Session) {
 	fmt.Println("handleWebsocketConnect")
 	token := s.Request.URL.Query().Get("token")
@@ -402,7 +451,45 @@ func (sys *OrderSys) handleGetRoomSetting(c *gin.Context) {
 	fmt.Printf("token: %v\n", token)
 	fmt.Printf("account: %v\n", account)
 	if msg, ok := loginMod.GetInstance().CheckUserToken(account, token); ok {
-		c.JSON(200, sys.roomSetting)
+		c.JSON(200, keymgrmod.GetInstance().GetRoomSetting())
+	} else {
+		c.JSON(int(serviceMod.RESPONSE_GET_TOKEN_FAIL), msg)
+	}
+}
+
+func (sys *OrderSys) handleGetUserType(c *gin.Context) {
+	token := c.Query("token")
+	account := c.Query("account")
+	fmt.Printf("token: %v\n", token)
+	fmt.Printf("account: %v\n", account)
+	if msg, ok := loginMod.GetInstance().CheckUserToken(account, token); ok {
+		c.JSON(200, loginMod.GetInstance().GetUserStaffType(account))
+	} else {
+		c.JSON(int(serviceMod.RESPONSE_GET_TOKEN_FAIL), msg)
+	}
+}
+
+//取得大門金鑰資料
+func (sys *OrderSys) handleGetDoorKeyData(c *gin.Context) {
+	token := c.Query("token")
+	account := c.Query("account")
+	fmt.Printf("token: %v\n", token)
+	fmt.Printf("account: %v\n", account)
+	if msg, ok := loginMod.GetInstance().CheckUserToken(account, token); ok {
+		c.JSON(200, keymgrmod.GetInstance().GetDoorKeyData())
+	} else {
+		c.JSON(int(serviceMod.RESPONSE_GET_TOKEN_FAIL), msg)
+	}
+}
+
+//取得房間金鑰資料
+func (sys *OrderSys) handleGetRoomKeyData(c *gin.Context) {
+	token := c.Query("token")
+	account := c.Query("account")
+	fmt.Printf("token: %v\n", token)
+	fmt.Printf("account: %v\n", account)
+	if msg, ok := loginMod.GetInstance().CheckUserToken(account, token); ok {
+		c.JSON(200, keymgrmod.GetInstance().GetRoomKeyData())
 	} else {
 		c.JSON(int(serviceMod.RESPONSE_GET_TOKEN_FAIL), msg)
 	}
@@ -445,6 +532,114 @@ func (sys *OrderSys) handleLogoutService(c *gin.Context) {
 	}
 }
 
+// 處理新增大門金鑰
+func (sys *OrderSys) handleAddDoorKey(c *gin.Context) {
+	var postData keymgrmod.POSTDoorKeyData
+	// 檢查資料
+	if err := c.Bind(&postData); err != nil {
+		log.Println("orderSys handleAddDoorKey error", err)
+		c.JSON(int(serviceMod.RESPONSE_POST_DATA_FORM_ERR), "Request data bind err")
+		return
+	}
+	// 檢查權限
+	if loginMod.GetInstance().GetUserStaffType(postData.Account) > loginMod.JANITOR ||
+		loginMod.GetInstance().GetUserStaffType(postData.Account) == loginMod.UNKNOWN {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), "帳號沒有權限")
+		return
+	}
+	// 檢查 token 是否有效
+	if msg, success := loginMod.GetInstance().CheckUserToken(postData.Account, postData.Token); !success {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), msg)
+		return
+	}
+	// 塞入資料
+	if msg, success := keymgrmod.GetInstance().AddDoorKey(postData); success {
+		c.JSON(int(serviceMod.RESPONSE_SUCCESS), "新增大門金鑰 Success")
+	} else {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), msg)
+	}
+}
+
+// 處理新增房間金鑰
+func (sys *OrderSys) handleAddRoomKey(c *gin.Context) {
+	var postData keymgrmod.POSTRoomKeyData
+	// 檢查資料
+	if err := c.Bind(&postData); err != nil {
+		log.Println("orderSys handleAddRoomKey error", err)
+		c.JSON(int(serviceMod.RESPONSE_POST_DATA_FORM_ERR), "Request data bind err")
+		return
+	}
+	// 檢查權限
+	if loginMod.GetInstance().GetUserStaffType(postData.Account) > loginMod.JANITOR ||
+		loginMod.GetInstance().GetUserStaffType(postData.Account) == loginMod.UNKNOWN {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), "帳號沒有權限")
+		return
+	}
+	// 檢查 token 是否有效
+	if msg, success := loginMod.GetInstance().CheckUserToken(postData.Account, postData.Token); !success {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), msg)
+		return
+	}
+	// 塞入資料
+	if msg, success := keymgrmod.GetInstance().AddRoomKey(postData); success {
+		c.JSON(int(serviceMod.RESPONSE_SUCCESS), "新增房間金鑰 Success")
+	} else {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), msg)
+	}
+}
+
+// 處理刪除房間金鑰
+func (sys *OrderSys) handleDeleteRoomKey(c *gin.Context) {
+	var postData keymgrmod.POSTRoomKeyData
+	// 檢查資料
+	if err := c.Bind(&postData); err != nil {
+		log.Println("orderSys handleDeleteRoomKey error", err)
+		c.JSON(int(serviceMod.RESPONSE_POST_DATA_FORM_ERR), "Request data bind err")
+		return
+	}
+	// 檢查權限
+	if loginMod.GetInstance().GetUserStaffType(postData.Account) > loginMod.JANITOR ||
+		loginMod.GetInstance().GetUserStaffType(postData.Account) == loginMod.UNKNOWN {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), "帳號沒有權限")
+		return
+	}
+	// 檢查 token 是否有效
+	if msg, success := loginMod.GetInstance().CheckUserToken(postData.Account, postData.Token); !success {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), msg)
+		return
+	}
+	// 刪除房間資料
+	if keymgrmod.GetInstance().DeleteRoomKey(postData.Id) {
+		c.JSON(int(serviceMod.RESPONSE_SUCCESS), "刪除房間金鑰 Success")
+	}
+}
+
+// 處理刪除大門金鑰
+func (sys *OrderSys) handleDeleteDoorKey(c *gin.Context) {
+	var postData keymgrmod.POSTRoomKeyData
+	// 檢查資料
+	if err := c.Bind(&postData); err != nil {
+		log.Println("orderSys handleDeleteDoorKey error", err)
+		c.JSON(int(serviceMod.RESPONSE_POST_DATA_FORM_ERR), "Request data bind err")
+		return
+	}
+	// 檢查權限
+	if loginMod.GetInstance().GetUserStaffType(postData.Account) > loginMod.JANITOR ||
+		loginMod.GetInstance().GetUserStaffType(postData.Account) == loginMod.UNKNOWN {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), "帳號沒有權限")
+		return
+	}
+	// 檢查 token 是否有效
+	if msg, success := loginMod.GetInstance().CheckUserToken(postData.Account, postData.Token); !success {
+		c.JSON(int(serviceMod.RESPONSE_POST_PERMISSION_FAIL), msg)
+		return
+	}
+	// 刪除大門資料
+	if keymgrmod.GetInstance().DeleteDoorKey(postData.Id) {
+		c.JSON(int(serviceMod.RESPONSE_SUCCESS), "刪除大門金鑰 Success")
+	}
+}
+
 //set data service handle
 func (sys *OrderSys) handlePOSTOrderService(c *gin.Context) {
 	var postOrderDate PostSetOrder
@@ -473,6 +668,7 @@ func (sys *OrderSys) handlePOSTOrderService(c *gin.Context) {
 	orderId := sys.createOrderId(&postOrderDate)
 	fmt.Printf("orderId: %v\n", orderId)
 	if _, ok := sys.orderInfo[orderId]; !ok {
+		roomSetting := keymgrmod.GetInstance().GetRoomSetting()
 		order := RoomOrder{
 			OrderId:        orderId,
 			CheckInData:    postOrderDate.CheckInData,
@@ -494,7 +690,7 @@ func (sys *OrderSys) handlePOSTOrderService(c *gin.Context) {
 		//send Telegram Bot msg
 		telegramBot.GetInstance().Broadcast(fmt.Sprintf("OrderId:%v \nRoom:%v \n入住時間:%v ~ %v \n新增訂單 @IgsRichardRd4",
 			order.OrderId,
-			sys.roomSetting[int(order.RoomType)],
+			roomSetting[int(order.RoomType)],
 			order.CheckInData,
 			order.CheckOutData), loginMod.BOSS)
 		c.JSON(int(serviceMod.RESPONSE_SUCCESS), "新增訂單成功")
@@ -507,20 +703,6 @@ func (sys *OrderSys) createOrderId(postOrder *PostSetOrder) string {
 	orderId = strings.ReplaceAll(orderId, "{CheckInTime}", postOrder.CheckInData)
 	orderId = strings.ReplaceAll(orderId, "{RoomType}", fmt.Sprintf("%v", postOrder.RoomType))
 	return orderId
-}
-
-//查詢房號設定
-func (sys *OrderSys) queryRoomType() {
-	query := "SELECT {RowName} FROM {TableName} "
-	query = strings.ReplaceAll(query, "{TableName}", fmt.Sprintf("%v", settingMod.GetInstance().GetVal(settingMod.DB_ROOM_TYPE_TAB)))
-	query = strings.ReplaceAll(query, "{RowName}", "RoomType, RoomName")
-	fmt.Printf("query: %v\n", query)
-	rows := sqlMod.GetInstance().Query(query)
-	for rows.Next() {
-		var roomSetting RoomTypeSetting
-		rows.Scan(&roomSetting.RoomType, &roomSetting.RoomName)
-		sys.roomSetting[roomSetting.RoomType] = roomSetting.RoomName
-	}
 }
 
 //查詢訂單

@@ -3,6 +3,9 @@ application:
     token: "6698869797:AAFzmzhLwmMNX6p6ZkK4cBkh2I4u_T__w7c"
     chatId: "-4091648098"
   port: ":9999"
+  doorDefaultKey:
+    door: "#123321#"
+    room: "#321123#"
   service:
     routerPath:
       setData: "./setData"
@@ -13,7 +16,13 @@ application:
       login: "./login"
       logout: "./logout"
       getRoomSetting: "./getRoomSetting"
-
+      getUserType: "./getUserType"
+      getDoorKeyData: "./getDoorKeyData"
+      getRoomKeyData: "./getRoomKeyData"
+      addDoorKey: "./addDoorKey"
+      addRoomKey: "./addRoomKey"
+      deleteDoorKey: "./deleteDoorKey"
+      deleteRoomKey: "./deleteRoomKey"
   sqlService:
     user: "sqlMod"
     pwd: "sqlMod#123"
@@ -26,3 +35,5 @@ application:
     room_type_tab: "code_room_type"
     user_event_tab: "data_order_with_account"
     telegram_contact_tab: "data_stuff_telegram"
+    door_key_info_tab: "data_door_key_info"
+    data_room_key_info: "data_room_key_info"
